@@ -1,3 +1,29 @@
-/__pycache__
+# فایل‌های محیطی و حساس
 .env
-c.txt
+.env.local
+.env.*.local
+
+# پوشه‌های کش پایتون
+__pycache__/
+*.py[cod]
+*$py.class
+
+# محیط مجازی
+venv/
+.venv/
+env/
+
+# فایل‌های IDE
+.vscode/
+.idea/
+
+# فایل‌های سیستم‌عامل
+.DS_Store
+Thumbs.db
+
+# لاگ‌ها
+*.log
+
+# فایل‌های دیتابیس محلی (اگر داری)
+*.db
+*.sqlite3
