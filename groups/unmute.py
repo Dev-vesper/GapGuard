@@ -1,213 +1,92 @@
 import telebot
 from telebot.apihelper import ApiTelegramException
-from telebot.types import ChatPermissions
+
+from utils.helpers import (
+    is_group,
+    is_admin,
+    bot_can_restrict,
+    escape_html,
+    build_user_mention,
+    extract_user_id,
+    unmute_permissions
+)
 
 
 def unmute_handler(bot: telebot.TeleBot):
 
     @bot.message_handler(commands=["unmute"])
     def unmute(message):
-
-        # فقط گروه
-        if message.chat.type not in ("group", "supergroup"):
+        if not is_group(message):
             return bot.reply_to(
                 message,
-                "❌ این دستور فقط در گروه قابل استفاده است."
+                "این دستور فقط در گروه قابل استفاده است."
             )
 
-        # -------------------------
-        # بررسی ادمین اجراکننده
-        # -------------------------
+        if not is_admin(bot, message.chat.id, message.from_user.id):
+            return bot.reply_to(
+                message,
+                "فقط ادمین‌ها می‌توانند از این دستور استفاده کنند."
+            )
+
+        bot_info = bot.get_me()
+
+        if not bot_can_restrict(bot, message.chat.id, bot_info.id):
+            return bot.reply_to(
+                message,
+                "ربات دسترسی لازم برای Unmute کردن کاربران را ندارد."
+            )
+
+        target_id, err = extract_user_id(message)
+        if err:
+            return bot.reply_to(message, err)
 
         try:
-            admin = bot.get_chat_member(
-                message.chat.id,
-                message.from_user.id
-            )
-
-            if admin.status not in ("administrator", "creator"):
-                return bot.reply_to(
-                    message,
-                    "❌ فقط ادمین‌ها می‌توانند از این دستور استفاده کنند."
-                )
-
+            target_member = bot.get_chat_member(message.chat.id, target_id)
+            target = target_member.user
         except ApiTelegramException:
             return bot.reply_to(
                 message,
-                "❌ خطا در بررسی دسترسی شما."
+                "کاربری با این ID در گروه پیدا نشد."
             )
-
-        # -------------------------
-        # بررسی دسترسی ربات
-        # -------------------------
 
         try:
-            bot_info = bot.get_me()
-
-            bot_member = bot.get_chat_member(
-                message.chat.id,
-                bot_info.id
-            )
-
-            if (
-                bot_member.status != "creator"
-                and not getattr(
-                    bot_member,
-                    "can_restrict_members",
-                    False
-                )
-            ):
-                return bot.reply_to(
-                    message,
-                    "❌ ربات دسترسی لازم برای Unmute کردن کاربران را ندارد."
-                )
-
-        except ApiTelegramException:
-            return bot.reply_to(
-                message,
-                "❌ خطا در بررسی دسترسی ربات."
-            )
-
-        # -------------------------
-        # تعیین کاربر هدف
-        # -------------------------
-
-        target = None
-
-        # Reply
-        if message.reply_to_message:
-
-            target = message.reply_to_message.from_user
-
-        # User ID
-        else:
-
-            parts = message.text.split()
-
-            if len(parts) < 2:
-                return bot.reply_to(
-                    message,
-                    (
-                        "⚠️ کاربر مشخص نشده.\n\n"
-                        "روش استفاده:\n"
-                        "• Reply → /unmute\n"
-                        "• /unmute USER_ID"
-                    )
-                )
-
-            user_id = parts[1]
-
-            if not user_id.lstrip("-").isdigit():
-                return bot.reply_to(
-                    message,
-                    "❌ User ID نامعتبر است."
-                )
-
-            try:
-                target = bot.get_chat_member(
-                    message.chat.id,
-                    int(user_id)
-                ).user
-
-            except ApiTelegramException:
-                return bot.reply_to(
-                    message,
-                    "❌ کاربری با این ID در گروه پیدا نشد."
-                )
-
-        # -------------------------
-        # Unmute
-        # -------------------------
-
-        try:
-
-            permissions = ChatPermissions(
-                can_send_messages=True,
-                can_send_audios=True,
-                can_send_documents=True,
-                can_send_photos=True,
-                can_send_videos=True,
-                can_send_video_notes=True,
-                can_send_voice_notes=True,
-                can_send_polls=True,
-                can_send_other_messages=True,
-                can_add_web_page_previews=True
-            )
-
             bot.restrict_chat_member(
                 chat_id=message.chat.id,
-                user_id=target.id,
-                permissions=permissions
+                user_id=target_id,
+                permissions=unmute_permissions()
             )
 
-            name = (
-                target.first_name
-                or target.last_name
-                or "Unknown"
-            )
+            name = build_user_mention(target)
+            admin_name = escape_html(message.from_user.first_name or "Unknown")
 
             bot.reply_to(
                 message,
                 (
-                    "🔊 <b>Mute کاربر برداشته شد</b>\n\n"
-                    f"👤 <b>کاربر:</b> "
-                    f"<a href='tg://user?id={target.id}'>"
-                    f"{name}</a>\n"
-                    f"🆔 <b>ID:</b> "
-                    f"<code>{target.id}</code>\n"
-                    f"👮 <b>توسط:</b> "
-                    f"{message.from_user.first_name}"
+                    "Mute کاربر برداشته شد\n\n"
+                    f"کاربر: {name}\n"
+                    f"ID: <code>{target.id}</code>\n"
+                    f"توسط: {admin_name}"
                 ),
                 parse_mode="HTML"
             )
-
-        # -------------------------
-        # Telegram API Error
-        # -------------------------
 
         except ApiTelegramException as e:
-
-            error = str(e).lower()
-
-            if "not enough rights" in error:
-                error_message = (
-                    "❌ ربات دسترسی کافی برای Unmute کردن ندارد."
-                )
-
-            elif "administrator" in error:
-                error_message = (
-                    "❌ این کاربر ادمین است."
-                )
-
-            elif "user not found" in error:
-                error_message = (
-                    "❌ کاربر پیدا نشد."
-                )
-
-            elif "chat not found" in error:
-                error_message = (
-                    "❌ گروه پیدا نشد."
-                )
-
+            desc = (e.description or str(e)).lower()
+            if "not enough rights" in desc:
+                msg = "ربات دسترسی کافی برای Unmute کردن ندارد."
+            elif "administrator" in desc:
+                msg = "این کاربر ادمین است."
+            elif "user not found" in desc:
+                msg = "کاربر پیدا نشد."
+            elif "chat not found" in desc:
+                msg = "گروه پیدا نشد."
             else:
-                error_message = (
-                    "❌ خطا هنگام Unmute کردن کاربر:\n"
-                    f"<code>{e}</code>"
-                )
-
-            return bot.reply_to(
-                message,
-                error_message,
-                parse_mode="HTML"
-            )
+                msg = f"خطا هنگام Unmute کردن کاربر:\n<code>{e}</code>"
+            return bot.reply_to(message, msg, parse_mode="HTML")
 
         except Exception as e:
-
             return bot.reply_to(
                 message,
-                (
-                    "❌ خطای غیرمنتظره:\n"
-                    f"<code>{e}</code>"
-                ),
+                f"خطای غیرمنتظره:\n<code>{e}</code>",
                 parse_mode="HTML"
             )
