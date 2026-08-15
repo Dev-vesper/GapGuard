@@ -2,6 +2,7 @@ import telebot
 from telebot.apihelper import ApiTelegramException
 
 from utils.helpers import is_group, is_admin
+from groups.logs import log_action
 
 
 def messages_handler(bot: telebot.TeleBot):
@@ -19,6 +20,16 @@ def messages_handler(bot: telebot.TeleBot):
         try:
             bot.delete_message(message.chat.id, message.reply_to_message.message_id)
             bot.reply_to(message, "پیام حذف شد.")
+            try:
+                log_action(
+                    action="delete_message",
+                    chat_id=message.chat.id,
+                    admin_id=message.from_user.id,
+                    target_id=message.reply_to_message.from_user.id,
+                    details=f"msg_id={message.reply_to_message.message_id}",
+                )
+            except Exception:
+                pass
         except ApiTelegramException as e:
             return bot.reply_to(message, f"خطا هنگام حذف پیام: {e}")
 
@@ -45,3 +56,12 @@ def messages_handler(bot: telebot.TeleBot):
                 pass
 
         bot.reply_to(message, f"تلاش برای حذف پیام‌ها انجام شد. حذف شده: {deleted}")
+        try:
+            log_action(
+                action="purge",
+                chat_id=message.chat.id,
+                admin_id=message.from_user.id,
+                details=f"start={start_id} end={end_id} deleted={deleted}",
+            )
+        except Exception:
+            pass

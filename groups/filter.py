@@ -1,5 +1,3 @@
-import os
-import json
 import re
 from typing import List
 
@@ -7,41 +5,50 @@ import telebot
 from telebot.apihelper import ApiTelegramException
 
 from utils.helpers import is_group, is_admin
-
-
-DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
-SETTINGS_FILE = os.path.join(DATA_DIR, "settings.json")
-
-
-def _load_settings() -> dict:
-    os.makedirs(DATA_DIR, exist_ok=True)
-    if not os.path.exists(SETTINGS_FILE):
-        with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
-            json.dump({}, f)
-    try:
-        with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        return {}
-
-
-def _save_settings(data: dict):
-    os.makedirs(DATA_DIR, exist_ok=True)
-    with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+from groups.logs import log_action
+from db import get_session
+from models import BannedWord, ChatSetting
 
 
 def _get_banned_words(chat_id: int) -> List[str]:
-    settings = _load_settings()
-    chat = settings.get(str(chat_id), {})
-    return chat.get("banned_words", [])
+    s = get_session()
+    try:
+        rows = s.query(BannedWord).filter(BannedWord.chat_id == str(chat_id)).all()
+        return [r.word for r in rows]
+    finally:
+        s.close()
 
 
-def _set_banned_words(chat_id: int, words: List[str]):
-    settings = _load_settings()
-    chat = settings.setdefault(str(chat_id), {})
-    chat["banned_words"] = words
-    _save_settings(settings)
+def _add_banned_word(chat_id: int, word: str):
+    s = get_session()
+    try:
+        exists = s.query(BannedWord).filter(BannedWord.chat_id == str(chat_id), BannedWord.word == word).first()
+        if exists:
+            return False
+        bw = BannedWord(chat_id=str(chat_id), word=word)
+        s.add(bw)
+        s.commit()
+        return True
+    finally:
+        s.close()
+
+
+def _remove_banned_word(chat_id: int, word: str):
+    s = get_session()
+    try:
+        s.query(BannedWord).filter(BannedWord.chat_id == str(chat_id), BannedWord.word == word).delete()
+        s.commit()
+    finally:
+        s.close()
+
+
+def _get_chat_setting(chat_id: int) -> ChatSetting:
+    s = get_session()
+    try:
+        setting = s.query(ChatSetting).filter(ChatSetting.chat_id == str(chat_id)).first()
+        return setting
+    finally:
+        s.close()
 
 
 def filter_handler(bot: telebot.TeleBot):
@@ -68,20 +75,15 @@ def filter_handler(bot: telebot.TeleBot):
             return bot.reply_to(message, "کلمه را مشخص کنید.")
 
         word = parts[2].strip().lower()
-        words = _get_banned_words(message.chat.id)
 
         if action == "add":
-            if word in words:
+            ok = _add_banned_word(message.chat.id, word)
+            if not ok:
                 return bot.reply_to(message, "این کلمه قبلا اضافه شده.")
-            words.append(word)
-            _set_banned_words(message.chat.id, words)
             return bot.reply_to(message, "کلمه اضافه شد.")
 
         if action == "remove":
-            if word not in words:
-                return bot.reply_to(message, "این کلمه در لیست نیست.")
-            words.remove(word)
-            _set_banned_words(message.chat.id, words)
+            _remove_banned_word(message.chat.id, word)
             return bot.reply_to(message, "کلمه حذف شد.")
 
         return bot.reply_to(message, "پارامتر نامعتبر: add|remove|list")
@@ -96,19 +98,28 @@ def filter_handler(bot: telebot.TeleBot):
         if not text:
             return
 
-        settings = _load_settings()
-        chat = settings.get(str(message.chat.id), {})
-        auto_remove = chat.get("auto_remove_banned", True)
-        anti_link = chat.get("anti_link", False)
-        anti_forward = chat.get("anti_forward", False)
+        setting = _get_chat_setting(message.chat.id)
+        auto_remove = True if not setting else setting.auto_remove_banned
+        anti_link = False if not setting else setting.anti_link
+        anti_forward = False if not setting else setting.anti_forward
 
         # banned words
-        words = chat.get("banned_words", [])
+        words = _get_banned_words(message.chat.id)
         for w in words:
             if w and re.search(r"\b" + re.escape(w) + r"\b", text):
                 if auto_remove:
                     try:
                         bot.delete_message(message.chat.id, message.message_id)
+                        try:
+                            log_action(
+                                action="auto_delete",
+                                chat_id=message.chat.id,
+                                admin_id=None,
+                                target_id=message.from_user.id,
+                                details=f"reason=word:{w}",
+                            )
+                        except Exception:
+                            pass
                     except ApiTelegramException:
                         pass
                 return
@@ -118,6 +129,16 @@ def filter_handler(bot: telebot.TeleBot):
             if re.search(r"https?://|t.me/|telegram.me/", text):
                 try:
                     bot.delete_message(message.chat.id, message.message_id)
+                    try:
+                        log_action(
+                            action="auto_delete",
+                            chat_id=message.chat.id,
+                            admin_id=None,
+                            target_id=message.from_user.id,
+                            details="reason=anti_link",
+                        )
+                    except Exception:
+                        pass
                 except ApiTelegramException:
                     pass
                 return
@@ -126,6 +147,16 @@ def filter_handler(bot: telebot.TeleBot):
         if anti_forward and getattr(message, "forward_from", None) is not None:
             try:
                 bot.delete_message(message.chat.id, message.message_id)
+                try:
+                    log_action(
+                        action="auto_delete",
+                        chat_id=message.chat.id,
+                        admin_id=None,
+                        target_id=message.from_user.id,
+                        details="reason=anti_forward",
+                    )
+                except Exception:
+                    pass
             except ApiTelegramException:
                 pass
             return
@@ -142,11 +173,18 @@ def filter_handler(bot: telebot.TeleBot):
         if len(parts) < 2 or parts[1].lower() not in ("on", "off"):
             return bot.reply_to(message, "استفاده: /set_auto_remove_banned on|off")
         value = parts[1].lower() == "on"
-        settings = _load_settings()
-        chat = settings.setdefault(str(message.chat.id), {})
-        chat["auto_remove_banned"] = value
-        _save_settings(settings)
-        bot.reply_to(message, f"auto_remove_banned set to {value}")
+        s = get_session()
+        try:
+            setting = s.query(ChatSetting).filter(ChatSetting.chat_id == str(message.chat.id)).first()
+            if not setting:
+                setting = ChatSetting(chat_id=str(message.chat.id), auto_remove_banned=value)
+                s.add(setting)
+            else:
+                setting.auto_remove_banned = value
+            s.commit()
+            bot.reply_to(message, f"auto_remove_banned set to {value}")
+        finally:
+            s.close()
 
 
     @bot.message_handler(commands=["set_anti_link"])
@@ -159,11 +197,18 @@ def filter_handler(bot: telebot.TeleBot):
         if len(parts) < 2 or parts[1].lower() not in ("on", "off"):
             return bot.reply_to(message, "استفاده: /set_anti_link on|off")
         value = parts[1].lower() == "on"
-        settings = _load_settings()
-        chat = settings.setdefault(str(message.chat.id), {})
-        chat["anti_link"] = value
-        _save_settings(settings)
-        bot.reply_to(message, f"anti_link set to {value}")
+        s = get_session()
+        try:
+            setting = s.query(ChatSetting).filter(ChatSetting.chat_id == str(message.chat.id)).first()
+            if not setting:
+                setting = ChatSetting(chat_id=str(message.chat.id), anti_link=value)
+                s.add(setting)
+            else:
+                setting.anti_link = value
+            s.commit()
+            bot.reply_to(message, f"anti_link set to {value}")
+        finally:
+            s.close()
 
 
     @bot.message_handler(commands=["set_anti_forward"])
@@ -176,8 +221,17 @@ def filter_handler(bot: telebot.TeleBot):
         if len(parts) < 2 or parts[1].lower() not in ("on", "off"):
             return bot.reply_to(message, "استفاده: /set_anti_forward on|off")
         value = parts[1].lower() == "on"
-        settings = _load_settings()
-        chat = settings.setdefault(str(message.chat.id), {})
-        chat["anti_forward"] = value
+        s = get_session()
+        try:
+            setting = s.query(ChatSetting).filter(ChatSetting.chat_id == str(message.chat.id)).first()
+            if not setting:
+                setting = ChatSetting(chat_id=str(message.chat.id), anti_forward=value)
+                s.add(setting)
+            else:
+                setting.anti_forward = value
+            s.commit()
+            bot.reply_to(message, f"anti_forward set to {value}")
+        finally:
+            s.close()
         _save_settings(settings)
         bot.reply_to(message, f"anti_forward set to {value}")

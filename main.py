@@ -10,6 +10,14 @@ from groups.unmute import unmute_handler
 from groups.warn import warn_handler
 from groups.messages import messages_handler
 from groups.filter import filter_handler
+from groups.roles import roles_handler
+from groups.logs import logs_handler
+import models
+from db import Base, engine
+
+
+# create database tables if not exists
+Base.metadata.create_all(bind=engine)
 
 # لود کردن فایل .env
 load_dotenv()
@@ -26,5 +34,7 @@ unmute_handler(bot)
 warn_handler(bot)
 messages_handler(bot)
 filter_handler(bot)
+roles_handler(bot)
+logs_handler(bot)
 
 bot.infinity_polling()

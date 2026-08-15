@@ -11,6 +11,7 @@ from utils.helpers import (
     build_user_mention,
     extract_target_and_reason
 )
+from groups.logs import log_action
 
 
 def ban_handler(bot: telebot.TeleBot):
@@ -75,6 +76,17 @@ def ban_handler(bot: telebot.TeleBot):
                 ),
                 parse_mode="HTML"
             )
+            # log the ban
+            try:
+                log_action(
+                    action="ban",
+                    chat_id=message.chat.id,
+                    admin_id=message.from_user.id,
+                    target_id=target.id,
+                    details=reason,
+                )
+            except Exception:
+                pass
 
         except ApiTelegramException as e:
             desc = (e.description or str(e)).lower()
