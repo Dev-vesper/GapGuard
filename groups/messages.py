@@ -9,13 +9,14 @@ def messages_handler(bot: telebot.TeleBot):
 
     @bot.message_handler(commands=["delete"]) 
     def delete(message):
-        if not is_group(message):
-            return bot.reply_to(message, "این دستور فقط در گروه قابل استفاده است.")
-        if not is_admin(bot, message.chat.id, message.from_user.id):
-            return bot.reply_to(message, "فقط ادمین‌ها می‌توانند از این دستور استفاده کنند.")
+        # اینا پروسس های الکی هست، بررسی هم نشن اتفاقی نمیفته فقط ادمین ها میتونن.
+        # if not is_group(message):
+        #     return
+        # if not is_admin(bot, message.chat.id, message.from_user.id):
+        #     return
 
-        if not message.reply_to_message:
-            return bot.reply_to(message, "برای حذف پیام، به آن پیام ریپلای کنید.")
+        # if not message.reply_to_message:
+        #     return bot.reply_to(message, "برای حذف پیام، به آن پیام ریپلای کنید.")
 
         try:
             bot.delete_message(message.chat.id, message.reply_to_message.message_id)
@@ -36,32 +37,45 @@ def messages_handler(bot: telebot.TeleBot):
 
     @bot.message_handler(commands=["purge"]) 
     def purge(message):
-        if not is_group(message):
-            return bot.reply_to(message, "این دستور فقط در گروه قابل استفاده است.")
-        if not is_admin(bot, message.chat.id, message.from_user.id):
-            return bot.reply_to(message, "فقط ادمین‌ها می‌توانند از این دستور استفاده کنند.")
+        # if not is_group(message):
+        #     return
+        # if not is_admin(bot, message.chat.id, message.from_user.id):
+        #     return
 
-        if not message.reply_to_message:
-            return bot.reply_to(message, "برای پاکسازی محدوده، به اولین پیام ریپلای کنید.")
+        parts = message.text.split()
+        if len(parts) < 2 or not parts[1].isdigit():
+            return
 
-        start_id = message.reply_to_message.message_id
-        end_id = message.message_id
-        deleted = 0
-        for mid in range(start_id, end_id + 1):
+        count = int(parts[1])
+        if count <= 0:
+            return
+
+        start_id = message.message_id - count + 1
+        if start_id < 1:
+            start_id = 1
+            
+        message_ids = list(range(start_id, message.message_id + 1))
+
+        try:
+            batch_size = 100
+            for i in range(0, len(message_ids), batch_size):
+                batch = message_ids[i:i + batch_size]
+                bot.delete_messages(message.chat.id, batch) # api رسمی تلگرام برا حذف پیام
+            
+            bot.send_message(
+                message.chat.id, 
+                f"✅ پاکسازی انجام شد.\nتعداد پیام‌های حذف شده: {len(message_ids)}"
+            )
+            
             try:
-                bot.delete_message(message.chat.id, mid)
-                deleted += 1
+                log_action(
+                    action="purge",
+                    chat_id=message.chat.id,
+                    admin_id=message.from_user.id,
+                    details=f"count={len(message_ids)}",
+                )
             except Exception:
-                # ignore individual failures
                 pass
 
-        bot.reply_to(message, f"تلاش برای حذف پیام‌ها انجام شد. حذف شده: {deleted}")
-        try:
-            log_action(
-                action="purge",
-                chat_id=message.chat.id,
-                admin_id=message.from_user.id,
-                details=f"start={start_id} end={end_id} deleted={deleted}",
-            )
         except Exception:
-            pass
+            bot.send_message(message.chat.id, "❌ عملیات با شکست مواجه شد.")
