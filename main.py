@@ -1,40 +1,51 @@
 import os
+
 from dotenv import load_dotenv
 from telebot import TeleBot
 
+from db import Base, engine
+import models  # noqa: F401 — مدل‌ها باید قبل از create_all ایمپورت شوند
 from groups.ban import ban_handler
 from groups.unban import unban_handler
 from groups.kick import kick_handler
 from groups.mute import mute_handler
 from groups.unmute import unmute_handler
 from groups.warn import warn_handler
-from groups.messages import messages_handler
-from groups.filter import filter_handler
 from groups.roles import roles_handler
+from groups.messages import messages_handler
+from groups.settings import settings_handler
 from groups.logs import logs_handler
-import models
-from db import Base, engine
+from groups.filter import filter_handler
 
-
-# create database tables if not exists
-Base.metadata.create_all(bind=engine)
-
-# لود کردن فایل .env
 load_dotenv()
 
-# پاس دادن متغیر از فایل .env
 BOT_TOKEN = os.getenv("BOT_TOKEN")
+if not BOT_TOKEN:
+    raise RuntimeError("BOT_TOKEN در فایل .env تنظیم نشده است.")
+
+# ساخت جداول دیتابیس در صورت نبود
+Base.metadata.create_all(bind=engine)
+
 bot = TeleBot(BOT_TOKEN)
 
-ban_handler(bot)
-unban_handler(bot)
-kick_handler(bot)
-mute_handler(bot)
-unmute_handler(bot)
-warn_handler(bot)
-messages_handler(bot)
-filter_handler(bot)
-roles_handler(bot)
-logs_handler(bot)
+# ترتیب مهم است: telebot اولین هندلرِ منطبق را اجرا می‌کند و
+# filter_handler یک هندلر catch-all ثبت می‌کند، پس باید آخر رجیستر شود
+# تا دستورات هندلرهای دیگر را نبلعد.
+HANDLERS = (
+    ban_handler,
+    unban_handler,
+    kick_handler,
+    mute_handler,
+    unmute_handler,
+    warn_handler,
+    roles_handler,
+    messages_handler,
+    settings_handler,
+    logs_handler,
+    filter_handler,
+)
+
+for register in HANDLERS:
+    register(bot)
 
 bot.infinity_polling()

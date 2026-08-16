@@ -1,8 +1,7 @@
-from typing import Optional
-
 import telebot
 from sqlalchemy import desc
 
+from utils.guards import command_guard
 from db import get_session
 from models import Log
 
@@ -10,20 +9,20 @@ from models import Log
 def log_action(
     action: str,
     chat_id: int,
-    admin_id: Optional[int] = None,
-    target_id: Optional[int] = None,
-    details: Optional[str] = None,
+    admin_id: int = None,
+    target_id: int = None,
+    details: str = None,
 ):
+    """درج رکورد در جدول logs؛ خطاها داخلی مدیریت می‌شوند تا اجرای دستور اصلی متوقف نشود."""
     s = get_session()
     try:
-        entry = Log(
+        s.add(Log(
             action=action,
             chat_id=str(chat_id),
             admin_id=admin_id,
             target_id=target_id,
             details=details,
-        )
-        s.add(entry)
+        ))
         s.commit()
     except Exception:
         s.rollback()
@@ -35,6 +34,10 @@ def logs_handler(bot: telebot.TeleBot):
 
     @bot.message_handler(commands=["logs"])
     def show_logs(message):
+        err = command_guard(bot, message)
+        if err:
+            return bot.reply_to(message, err)
+
         parts = message.text.split()
         filter_action = None
         page = 1

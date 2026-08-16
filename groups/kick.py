@@ -1,102 +1,55 @@
 import telebot
 from telebot.apihelper import ApiTelegramException
 
-from utils.helpers import (
-    is_group,
-    is_admin,
-    bot_can_restrict,
-    escape_html,
-    build_user_mention,
-    extract_target_and_reason
+from utils.helpers import extract_target_and_reason
+from utils.guards import (
+    command_guard,
+    target_guard,
+    action_report,
+    api_error_text,
+    unexpected_error_text,
 )
+from groups.logs import log_action
 
 
 def kick_handler(bot: telebot.TeleBot):
 
     @bot.message_handler(commands=["kick"])
     def kick(message):
-        if not is_group(message):
-            return bot.reply_to(
-                message,
-                "این دستور فقط در گروه قابل استفاده است."
-            )
-
-        if not is_admin(bot, message.chat.id, message.from_user.id):
-            return bot.reply_to(
-                message,
-                "فقط ادمین‌ها می‌توانند از این دستور استفاده کنند."
-            )
-
-        bot_info = bot.get_me()
-
-        if not bot_can_restrict(bot, message.chat.id, bot_info.id):
-            return bot.reply_to(
-                message,
-                "ربات دسترسی Kick کردن کاربران را ندارد."
-            )
+        err = command_guard(
+            bot, message, restrict_error="ربات دسترسی Kick کردن کاربران را ندارد."
+        )
+        if err:
+            return bot.reply_to(message, err)
 
         target, reason, err = extract_target_and_reason(bot, message)
         if err:
             return bot.reply_to(message, err)
 
-        if target.id == bot_info.id:
-            return bot.reply_to(message, "نمی‌توانم خودم را Kick کنم.")
+        err = target_guard(bot, message.chat.id, target, "Kick")
+        if err:
+            return bot.reply_to(message, err)
 
         try:
-            target_member = bot.get_chat_member(message.chat.id, target.id)
-            if target_member.status in ("administrator", "creator"):
-                return bot.reply_to(
-                    message,
-                    "نمی‌توان ادمین یا Owner گروه را Kick کرد."
-                )
-        except ApiTelegramException:
-            return bot.reply_to(message, "خطا در بررسی وضعیت کاربر.")
-
-        try:
-            bot.ban_chat_member(
-                chat_id=message.chat.id,
-                user_id=target.id
-            )
-
+            # کیک در تلگرام = بن + آنبن فوری
+            bot.ban_chat_member(chat_id=message.chat.id, user_id=target.id)
             bot.unban_chat_member(
-                chat_id=message.chat.id,
-                user_id=target.id,
-                only_if_banned=True
+                chat_id=message.chat.id, user_id=target.id, only_if_banned=True
             )
-
-            name = build_user_mention(target)
-            admin_name = escape_html(message.from_user.first_name or "Unknown")
-            reason_safe = escape_html(reason)
-
-            bot.reply_to(
-                message,
-                (
-                    "کاربر Kick شد\n\n"
-                    f"کاربر: {name}\n"
-                    f"ID: <code>{target.id}</code>\n"
-                    f"دلیل: {reason_safe}\n"
-                    f"توسط: {admin_name}"
-                ),
-                parse_mode="HTML"
-            )
-
         except ApiTelegramException as e:
-            desc = (e.description or str(e)).lower()
-            if "not enough rights" in desc:
-                msg = "ربات دسترسی کافی برای Kick کردن ندارد."
-            elif "administrator" in desc:
-                msg = "نمی‌توان ادمین را Kick کرد."
-            elif "user not found" in desc:
-                msg = "کاربر پیدا نشد."
-            elif "chat not found" in desc:
-                msg = "گروه پیدا نشد."
-            else:
-                msg = f"خطا هنگام Kick کردن کاربر:\n<code>{e}</code>"
-            return bot.reply_to(message, msg, parse_mode="HTML")
-
+            return bot.reply_to(message, api_error_text("Kick", e), parse_mode="HTML")
         except Exception as e:
-            return bot.reply_to(
-                message,
-                f"خطای غیرمنتظره:\n<code>{e}</code>",
-                parse_mode="HTML"
-            )
+            return bot.reply_to(message, unexpected_error_text(e), parse_mode="HTML")
+
+        bot.reply_to(
+            message,
+            action_report("Kick", target, message.from_user, reason),
+            parse_mode="HTML",
+        )
+        log_action(
+            action="kick",
+            chat_id=message.chat.id,
+            admin_id=message.from_user.id,
+            target_id=target.id,
+            details=reason,
+        )

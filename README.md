@@ -13,10 +13,17 @@
 ## Repo Structure
 
 - `main.py` — bot bootstrap, handler registration, and DB initialization.
-- `db.py` — SQLAlchemy engine, `SessionLocal`, and declarative base.
+- `db.py` — SQLAlchemy engine, `SessionLocal`, and declarative base (supports `DATABASE_URL` override from `.env`).
 - `models.py` — ORM models (`ChatSetting`, `Warn`, `Log`, `SpecialMember`, `Tag`, `BannedWord`).
-- `groups/` — command and message handlers (ban, warn, filter, roles, logs, messages, ...).
+- `groups/` — command and message handlers, one module per feature:
+  - `ban.py`, `unban.py`, `kick.py`, `mute.py`, `unmute.py` — member management.
+  - `warn.py` — warn system with per-chat thresholds.
+  - `filter.py` — banned words, anti-link, anti-forward.
+  - `settings.py` — per-chat settings commands and shared setting accessors.
+  - `roles.py`, `messages.py`, `logs.py` — special members/tags/promote, delete/purge, action logs.
 - `utils/helpers.py` — shared helper functions (admin checks, mention formatting, extraction helpers).
+- `utils/guards.py` — shared command guards and message/error templates used by all handlers.
+- `data/` — local SQLite database (created at runtime).
 - `requirements.txt` — pinned Python dependencies.
 
 ## Requirements

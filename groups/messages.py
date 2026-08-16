@@ -1,63 +1,54 @@
 import telebot
 from telebot.apihelper import ApiTelegramException
 
-from utils.helpers import is_group, is_admin
+from utils.guards import command_guard
 from groups.logs import log_action
 
 
 def messages_handler(bot: telebot.TeleBot):
 
-    @bot.message_handler(commands=["delete"]) 
+    @bot.message_handler(commands=["delete"])
     def delete(message):
-        # اینا پروسس های الکی هست، بررسی هم نشن اتفاقی نمیفته فقط ادمین ها میتونن.
-        # if not is_group(message):
-        #     return
-        # if not is_admin(bot, message.chat.id, message.from_user.id):
-        #     return
+        err = command_guard(bot, message)
+        if err:
+            return bot.reply_to(message, err)
 
-        # if not message.reply_to_message:
-        #     return bot.reply_to(message, "برای حذف پیام، به آن پیام ریپلای کنید.")
+        if not message.reply_to_message:
+            return bot.reply_to(message, "برای حذف پیام، به آن پیام ریپلای کنید.")
 
+        target_msg = message.reply_to_message
         try:
-            bot.delete_message(message.chat.id, message.reply_to_message.message_id)
-            bot.reply_to(message, "پیام حذف شد.")
-            try:
-                log_action(
-                    action="delete_message",
-                    chat_id=message.chat.id,
-                    admin_id=message.from_user.id,
-                    target_id=message.reply_to_message.from_user.id,
-                    details=f"msg_id={message.reply_to_message.message_id}",
-                )
-            except Exception:
-                pass
+            bot.delete_message(message.chat.id, target_msg.message_id)
         except ApiTelegramException as e:
             return bot.reply_to(message, f"خطا هنگام حذف پیام: {e}")
 
+        bot.reply_to(message, "پیام حذف شد.")
+        log_action(
+            action="delete_message",
+            chat_id=message.chat.id,
+            admin_id=message.from_user.id,
+            target_id=target_msg.from_user.id if target_msg.from_user else None,
+            details=f"msg_id={target_msg.message_id}",
+        )
 
-    @bot.message_handler(commands=["purge"]) 
+    @bot.message_handler(commands=["purge"])
     def purge(message):
-        # if not is_group(message):
-        #     return
-        # if not is_admin(bot, message.chat.id, message.from_user.id):
-        #     return
+        err = command_guard(bot, message)
+        if err:
+            return bot.reply_to(message, err)
 
         parts = message.text.split()
         if len(parts) < 2 or not parts[1].isdigit():
-            return
+            return bot.reply_to(message, "استفاده: /purge <تعداد>")
 
         count = int(parts[1])
         if count <= 0:
-            return
-        
-        start_id = message.message_id - count
-        if start_id < 1:
-            start_id = 1
-            
-        message_ids = list(range(start_id, message.message_id))
+            return bot.reply_to(message, "تعداد باید 1 یا بیشتر باشد.")
+
+        start_id = max(1, message.message_id - count)
         deleted_count = 0
 
-        for msg_id in message_ids:
+        for msg_id in range(start_id, message.message_id):
             try:
                 bot.delete_message(message.chat.id, msg_id)
                 deleted_count += 1
@@ -66,18 +57,14 @@ def messages_handler(bot: telebot.TeleBot):
 
         if deleted_count > 0:
             bot.send_message(
-                message.chat.id, 
-                f"✅ پاکسازی انجام شد.\nتعداد پیام‌های حذف شده: {deleted_count}"
+                message.chat.id,
+                f"✅ پاکسازی انجام شد.\nتعداد پیام‌های حذف شده: {deleted_count}",
             )
-            
-            try:
-                log_action(
-                    action="purge",
-                    chat_id=message.chat.id,
-                    admin_id=message.from_user.id,
-                    details=f"count={deleted_count}",
-                )
-            except Exception:
-                pass
+            log_action(
+                action="purge",
+                chat_id=message.chat.id,
+                admin_id=message.from_user.id,
+                details=f"count={deleted_count}",
+            )
         else:
             bot.send_message(message.chat.id, "❌ عملیات با شکست مواجه شد.")
