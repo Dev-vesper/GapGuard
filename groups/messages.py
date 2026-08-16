@@ -49,8 +49,9 @@ def messages_handler(bot: telebot.TeleBot):
         count = int(parts[1])
         if count <= 0:
             return
-
-        start_id = message.message_id - count + 1
+        
+        # بعلاوه ۱ رو حذف کردم تا واقعا اون تعداد پیامی که وارد شده حذف بشه
+        start_id = message.message_id - count
         if start_id < 1:
             start_id = 1
             
