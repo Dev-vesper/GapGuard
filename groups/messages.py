@@ -50,22 +50,24 @@ def messages_handler(bot: telebot.TeleBot):
         if count <= 0:
             return
         
-        # بعلاوه ۱ رو حذف کردم تا واقعا اون تعداد پیامی که وارد شده حذف بشه
         start_id = message.message_id - count
         if start_id < 1:
             start_id = 1
             
-        message_ids = list(range(start_id, message.message_id + 1))
+        message_ids = list(range(start_id, message.message_id))
+        deleted_count = 0
 
-        try:
-            batch_size = 100
-            for i in range(0, len(message_ids), batch_size):
-                batch = message_ids[i:i + batch_size]
-                bot.delete_messages(message.chat.id, batch) # api رسمی تلگرام برا حذف پیام
-            
+        for msg_id in message_ids:
+            try:
+                bot.delete_message(message.chat.id, msg_id)
+                deleted_count += 1
+            except Exception:
+                pass
+
+        if deleted_count > 0:
             bot.send_message(
                 message.chat.id, 
-                f"✅ پاکسازی انجام شد.\nتعداد پیام‌های حذف شده: {len(message_ids)}"
+                f"✅ پاکسازی انجام شد.\nتعداد پیام‌های حذف شده: {deleted_count}"
             )
             
             try:
@@ -73,10 +75,9 @@ def messages_handler(bot: telebot.TeleBot):
                     action="purge",
                     chat_id=message.chat.id,
                     admin_id=message.from_user.id,
-                    details=f"count={len(message_ids)}",
+                    details=f"count={deleted_count}",
                 )
             except Exception:
                 pass
-
-        except Exception:
+        else:
             bot.send_message(message.chat.id, "❌ عملیات با شکست مواجه شد.")
