@@ -33,3 +33,7 @@ c.txt
 
 # مستندات داخلی
 internals.md
+
+.claude/
+.freebuff/
+.gemini/
