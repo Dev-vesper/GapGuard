@@ -62,3 +62,23 @@ class BannedWord(Base):
     id = Column(Integer, primary_key=True)
     chat_id = Column(String, index=True)
     word = Column(String, index=True)
+
+
+class ContentRestriction(Base):
+    """قفل انواع محتوا در گروه یا برای یک کاربر خاص."""
+    __tablename__ = "content_restrictions"
+    id = Column(Integer, primary_key=True)
+    chat_id = Column(String, index=True, nullable=False)
+    user_id = Column(Integer, index=True, nullable=True)  # None = اعمال روی کل گروه
+    content_type = Column(String, index=True, nullable=False)  # photo, video, sticker, ...
+    ts = Column(DateTime, default=datetime.utcnow)
+
+
+class MessageStat(Base):
+    """شمارش پیام‌ها برای آمارگیری گروه."""
+    __tablename__ = "message_stats"
+    id = Column(Integer, primary_key=True)
+    chat_id = Column(String, index=True, nullable=False)
+    user_id = Column(Integer, index=True, nullable=False)
+    content_type = Column(String, index=True, nullable=False)  # text, photo, sticker, ...
+    ts = Column(DateTime, default=datetime.utcnow, index=True)

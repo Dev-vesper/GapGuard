@@ -8,6 +8,7 @@ from utils.helpers import is_group
 from utils.guards import command_guard
 from groups.logs import log_action
 from groups.settings import get_chat_setting
+from groups.stats import track_message
 from db import get_session
 from models import BannedWord
 
@@ -106,6 +107,9 @@ def filter_handler(bot: telebot.TeleBot):
         # دستورات ربات اسکن نمی‌شوند (مثلاً خودِ کلمه فیلترشده در /banword)
         if not is_group(message):
             return
+
+        # شمارش پیام متنی برای آمارگیری
+        track_message(message)
 
         text = (message.text or message.caption or "").lower()
         if not text or text.startswith("/"):
