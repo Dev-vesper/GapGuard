@@ -5,7 +5,7 @@ from utils.helpers import extract_user_id
 from utils.guards import command_guard
 from groups.logs import log_action
 from core.database import get_session
-from models import SpecialMember, Tag
+from database.models import SpecialMember, Tag
 
 
 def roles_handler(bot: telebot.TeleBot):

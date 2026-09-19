@@ -5,7 +5,7 @@ from typing import Optional
 import telebot
 
 from core.database import get_session
-from models import ChatSetting
+from database.models import ChatSetting
 from utils.guards import command_guard
 
 

@@ -10,7 +10,7 @@ from groups.logs import log_action
 from groups.settings import get_chat_setting
 from groups.stats import track_message
 from core.database import get_session
-from models import BannedWord
+from database.models import BannedWord
 
 
 LINK_PATTERN = re.compile(r"https?://|t\.me/|telegram\.me/")

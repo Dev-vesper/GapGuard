@@ -11,7 +11,7 @@ from utils.helpers import (
 from utils.guards import command_guard
 
 from core.database import get_session
-from models import Warn
+from database.models import Warn
 from groups.logs import log_action
 from groups.settings import get_chat_setting
 

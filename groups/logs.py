@@ -3,7 +3,7 @@ from sqlalchemy import desc
 
 from utils.guards import command_guard
 from core.database import get_session
-from models import Log
+from database.models import Log
 
 
 def log_action(

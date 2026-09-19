@@ -8,7 +8,7 @@ from utils.guards import command_guard
 from groups.logs import log_action
 from groups.stats import track_message
 from core.database import get_session
-from models import ContentRestriction
+from database.models import ContentRestriction
 
 ALLOWED_CONTENT_TYPES = {
     "photo": "عکس",

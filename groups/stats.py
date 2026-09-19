@@ -10,7 +10,7 @@ from utils.helpers import is_group, escape_html, build_user_mention
 from utils.guards import command_guard
 from groups.logs import log_action
 from core.database import get_session
-from models import MessageStat, Log, Warn, BannedWord, ContentRestriction
+from database.models import MessageStat, Log, Warn, BannedWord, ContentRestriction
 
 # ── ثابت‌ها ──────────────────────────────────────────
 CONTENT_LABELS = {
