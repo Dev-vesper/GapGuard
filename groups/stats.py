@@ -6,8 +6,8 @@ import telebot
 from telebot.apihelper import ApiTelegramException
 from sqlalchemy import func, desc, extract
 
-from utils.helpers import is_group, escape_html, build_user_mention
-from utils.guards import command_guard
+from bot.helpers import is_group, escape_html, build_user_mention
+from bot.guards import command_guard
 from groups.logs import log_action
 from core.database import get_session
 from database.models import MessageStat, Log, Warn, BannedWord, ContentRestriction

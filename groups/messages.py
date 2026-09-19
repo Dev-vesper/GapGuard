@@ -1,7 +1,7 @@
 import telebot
 from telebot.apihelper import ApiTelegramException
 
-from utils.guards import command_guard
+from bot.guards import command_guard
 from groups.logs import log_action
 
 

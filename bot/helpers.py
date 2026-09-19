@@ -1,3 +1,5 @@
+"""توابع کمکی خالص: بررسی نوع چت، ساخت منشن و متن، و پارس تارگت."""
+
 import html
 from typing import Optional, Tuple
 
@@ -8,24 +10,6 @@ from telebot.types import ChatPermissions, Message, User
 
 def is_group(message: Message) -> bool:
     return message.chat.type in ("group", "supergroup")
-
-
-def is_admin(bot: telebot.TeleBot, chat_id: int, user_id: int) -> bool:
-    try:
-        member = bot.get_chat_member(chat_id, user_id)
-        return member.status in ("administrator", "creator")
-    except ApiTelegramException:
-        return False
-
-
-def bot_can_restrict(bot: telebot.TeleBot, chat_id: int, bot_id: int) -> bool:
-    try:
-        member = bot.get_chat_member(chat_id, bot_id)
-        return member.status == "creator" or getattr(
-            member, "can_restrict_members", False
-        )
-    except ApiTelegramException:
-        return False
 
 
 def escape_html(text: Optional[str]) -> str:

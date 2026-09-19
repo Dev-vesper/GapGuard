@@ -6,7 +6,7 @@ import telebot
 
 from core.database import get_session
 from database.models import ChatSetting
-from utils.guards import command_guard
+from bot.guards import command_guard
 
 
 def get_chat_setting(chat_id: int) -> Optional[ChatSetting]:

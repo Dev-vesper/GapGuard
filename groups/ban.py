@@ -1,8 +1,8 @@
 import telebot
 from telebot.apihelper import ApiTelegramException
 
-from utils.helpers import extract_target_and_reason
-from utils.guards import (
+from bot.helpers import extract_target_and_reason
+from bot.guards import (
     command_guard,
     target_guard,
     action_report,

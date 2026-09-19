@@ -1,8 +1,8 @@
 import telebot
 from telebot.apihelper import ApiTelegramException
 
-from utils.helpers import extract_user_id, unmute_permissions, build_user_mention, escape_html
-from utils.guards import command_guard, api_error_text, unexpected_error_text
+from bot.helpers import extract_user_id, unmute_permissions, build_user_mention, escape_html
+from bot.guards import command_guard, api_error_text, unexpected_error_text
 from groups.logs import log_action
 
 

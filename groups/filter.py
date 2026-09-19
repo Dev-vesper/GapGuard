@@ -4,8 +4,8 @@ from typing import List
 import telebot
 from telebot.apihelper import ApiTelegramException
 
-from utils.helpers import is_group
-from utils.guards import command_guard
+from bot.helpers import is_group
+from bot.guards import command_guard
 from groups.logs import log_action
 from groups.settings import get_chat_setting
 from groups.stats import track_message
