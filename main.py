@@ -4,7 +4,7 @@ from core.config import get_bot_token
 from core.database import Base, engine
 from core.logger import setup_logging
 from database import models  # noqa: F401 — مدل‌ها باید قبل از create_all ایمپورت شوند
-from groups.loader import register_all_handlers
+from bot.loader import register_all_handlers
 
 setup_logging()
 
