@@ -1,45 +1,9 @@
-"""تنظیمات هر گروه (مدل ChatSetting) — توابع مشترک و دستورات تنظیم."""
-
-from typing import Optional
+"""دستورات تنظیمات گروه (مدل ChatSetting)."""
 
 import telebot
 
-from core.database import get_session
-from database.models import ChatSetting
 from bot.guards import command_guard
-
-
-def get_chat_setting(chat_id: int) -> Optional[ChatSetting]:
-    """تنظیمات گروه را برمی‌گرداند یا None اگر هنوز رکوردی ساخته نشده."""
-    s = get_session()
-    try:
-        return (
-            s.query(ChatSetting)
-            .filter(ChatSetting.chat_id == str(chat_id))
-            .first()
-        )
-    finally:
-        s.close()
-
-
-def update_chat_setting(chat_id: int, **fields) -> None:
-    """ساخت یا به‌روزرسانی تنظیمات گروه با فیلدهای داده‌شده."""
-    s = get_session()
-    try:
-        setting = (
-            s.query(ChatSetting)
-            .filter(ChatSetting.chat_id == str(chat_id))
-            .first()
-        )
-        if not setting:
-            setting = ChatSetting(chat_id=str(chat_id))
-            s.add(setting)
-        for name, value in fields.items():
-            setattr(setting, name, value)
-        s.commit()
-    finally:
-        s.close()
-
+from services.settings_service import update_chat_settings
 
 TOGGLE_FLAGS = {
     "set_auto_remove_banned": "auto_remove_banned",
@@ -66,7 +30,7 @@ def settings_handler(bot: telebot.TeleBot):
         if value < 1:
             return bot.reply_to(message, "حداقل باید 1 یا بیشتر باشد.")
 
-        update_chat_setting(message.chat.id, max_warns=value)
+        update_chat_settings(message.chat.id, max_warns=value)
         bot.reply_to(message, f"حداکثر Warn برای این گروه تنظیم شد به: {value}")
 
     @bot.message_handler(commands=list(TOGGLE_FLAGS))
@@ -84,5 +48,5 @@ def settings_handler(bot: telebot.TeleBot):
             return bot.reply_to(message, f"استفاده: /{command} on|off")
 
         value = parts[1].lower() == "on"
-        update_chat_setting(message.chat.id, **{field: value})
+        update_chat_settings(message.chat.id, **{field: value})
         bot.reply_to(message, f"{field} set to {value}")

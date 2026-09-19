@@ -1,8 +1,10 @@
+"""دستورات حذف و پاکسازی پیام‌ها."""
+
 import telebot
 from telebot.apihelper import ApiTelegramException
 
 from bot.guards import command_guard
-from groups.logs import log_action
+from services.log_service import log_action
 
 
 def messages_handler(bot: telebot.TeleBot):

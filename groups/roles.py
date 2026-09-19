@@ -1,11 +1,20 @@
+"""دستورات ممبر ویژه، تگ و ارتقای اعضا."""
+
 import telebot
 from telebot.apihelper import ApiTelegramException
 
-from bot.helpers import extract_user_id
 from bot.guards import command_guard
-from groups.logs import log_action
-from core.database import get_session
-from database.models import SpecialMember, Tag
+from bot.helpers import extract_user_id
+from services.log_service import log_action
+from services.roles_service import (
+    add_special_member,
+    list_special_members,
+    list_tags,
+    promote_member,
+    remove_special_member,
+    remove_tag,
+    set_tag,
+)
 
 
 def roles_handler(bot: telebot.TeleBot):
@@ -20,16 +29,7 @@ def roles_handler(bot: telebot.TeleBot):
         if len(parts) < 2:
             return bot.reply_to(message, "استفاده: /special add|remove|list <reply|user_id>")
         action = parts[1].lower()
-        s = get_session()
-        try:
-            special = [
-                r.user_id
-                for r in s.query(SpecialMember)
-                .filter(SpecialMember.chat_id == str(message.chat.id))
-                .all()
-            ]
-        finally:
-            s.close()
+        special_members = list_special_members(message.chat.id)
 
         # تارگت از ریپلای یا آرگومان id
         target_id = None
@@ -39,10 +39,10 @@ def roles_handler(bot: telebot.TeleBot):
             target_id = int(parts[2])
 
         if action == "list":
-            if not special:
+            if not special_members:
                 return bot.reply_to(message, "هیچ ممبر ویژه‌ای ثبت نشده.")
             text = "لیست ممبر ویژه:\n" + "\n".join(
-                [f"<code>{uid}</code>" for uid in special]
+                [f"<code>{uid}</code>" for uid in special_members]
             )
             return bot.reply_to(message, text, parse_mode="HTML")
 
@@ -50,14 +50,9 @@ def roles_handler(bot: telebot.TeleBot):
             return bot.reply_to(message, "کاربر را ریپلای کنید یا id وارد کنید.")
 
         if action == "add":
-            if target_id in special:
+            if target_id in special_members:
                 return bot.reply_to(message, "این کاربر قبلا ممبر ویژه است.")
-            s = get_session()
-            try:
-                s.add(SpecialMember(chat_id=str(message.chat.id), user_id=target_id))
-                s.commit()
-            finally:
-                s.close()
+            add_special_member(message.chat.id, target_id)
             log_action(
                 action="special_add",
                 chat_id=message.chat.id,
@@ -67,17 +62,9 @@ def roles_handler(bot: telebot.TeleBot):
             return bot.reply_to(message, "کاربر به عنوان ممبر ویژه اضافه شد.")
 
         if action == "remove":
-            if target_id not in special:
+            if target_id not in special_members:
                 return bot.reply_to(message, "این کاربر در لیست ممبر ویژه نیست.")
-            s = get_session()
-            try:
-                s.query(SpecialMember).filter(
-                    SpecialMember.chat_id == str(message.chat.id),
-                    SpecialMember.user_id == target_id,
-                ).delete()
-                s.commit()
-            finally:
-                s.close()
+            remove_special_member(message.chat.id, target_id)
             log_action(
                 action="special_remove",
                 chat_id=message.chat.id,
@@ -98,12 +85,7 @@ def roles_handler(bot: telebot.TeleBot):
         if len(parts) < 2:
             return bot.reply_to(message, "استفاده: /tag set|remove|show <reply|user_id> [tag]")
         action = parts[1].lower()
-        s = get_session()
-        try:
-            tags_db = s.query(Tag).filter(Tag.chat_id == str(message.chat.id)).all()
-            tags = {str(t.user_id): t.tag for t in tags_db}
-        finally:
-            s.close()
+        tags = list_tags(message.chat.id)
 
         user_id = None
         if message.reply_to_message:
@@ -114,10 +96,10 @@ def roles_handler(bot: telebot.TeleBot):
         if action == "show":
             if not user_id:
                 return bot.reply_to(message, "کاربر را ریپلای کنید یا id وارد کنید.")
-            t = tags.get(str(user_id))
-            if not t:
+            tag_text = tags.get(str(user_id))
+            if not tag_text:
                 return bot.reply_to(message, "برای این کاربر تگی ثبت نشده.")
-            return bot.reply_to(message, f"Tag: {t}")
+            return bot.reply_to(message, f"Tag: {tag_text}")
 
         if action == "set":
             # انتظار: /tag set <reply|user_id> <tag>
@@ -135,21 +117,7 @@ def roles_handler(bot: telebot.TeleBot):
 
             if not user_id or not tag_text:
                 return bot.reply_to(message, "کاربر یا تگ نامعتبر است.")
-            s = get_session()
-            try:
-                t = (
-                    s.query(Tag)
-                    .filter(Tag.chat_id == str(message.chat.id), Tag.user_id == user_id)
-                    .first()
-                )
-                if not t:
-                    t = Tag(chat_id=str(message.chat.id), user_id=user_id, tag=tag_text)
-                    s.add(t)
-                else:
-                    t.tag = tag_text
-                s.commit()
-            finally:
-                s.close()
+            set_tag(message.chat.id, user_id, tag_text)
             log_action(
                 action="tag_set",
                 chat_id=message.chat.id,
@@ -163,14 +131,7 @@ def roles_handler(bot: telebot.TeleBot):
             if not user_id:
                 return bot.reply_to(message, "کاربر را ریپلای کنید یا id وارد کنید.")
             if str(user_id) in tags:
-                s = get_session()
-                try:
-                    s.query(Tag).filter(
-                        Tag.chat_id == str(message.chat.id), Tag.user_id == user_id
-                    ).delete()
-                    s.commit()
-                finally:
-                    s.close()
+                remove_tag(message.chat.id, user_id)
                 log_action(
                     action="tag_remove",
                     chat_id=message.chat.id,
@@ -195,19 +156,7 @@ def roles_handler(bot: telebot.TeleBot):
             return bot.reply_to(message, err)
 
         try:
-            # ارتقا با دسترسی‌های محدود
-            bot.promote_chat_member(
-                chat_id=message.chat.id,
-                user_id=target_id,
-                can_change_info=False,
-                can_post_messages=False,
-                can_edit_messages=False,
-                can_delete_messages=False,
-                can_invite_users=True,
-                can_restrict_members=True,
-                can_pin_messages=True,
-                can_promote_members=False,
-            )
+            promote_member(bot, message.chat.id, target_id)
             mention = f'<a href="tg://user?id={target_id}">{target_id}</a>'
             log_action(
                 action="promote",

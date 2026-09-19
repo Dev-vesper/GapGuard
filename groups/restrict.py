@@ -1,88 +1,20 @@
-"""قفل انواع محتوا و قفل محتوا برای کاربر خاص."""
+"""قفل انواع محتوا برای کل گروه یا برای یک کاربر خاص."""
 
 import telebot
 from telebot.apihelper import ApiTelegramException
 
-from bot.helpers import is_group, escape_html, build_user_mention, extract_user_id
 from bot.guards import command_guard
-from groups.logs import log_action
-from groups.stats import track_message
-from core.database import get_session
-from database.models import ContentRestriction
-
-ALLOWED_CONTENT_TYPES = {
-    "photo": "عکس",
-    "video": "ویدیو",
-    "sticker": "استیکر",
-    "animation": "گیف",
-    "voice": "ویس",
-    "video_note": "ویدیو نوت",
-    "document": "فایل",
-    "audio": "آدیو",
-    "poll": "نظرسنجی",
-    "contact": "کانتکت",
-    "location": "لوکیشن",
-}
-
-
-def _get_restrictions(chat_id: int, user_id: int = None):
-    """لیست محتواهای قفل‌شده را برمی‌گرداند."""
-    s = get_session()
-    try:
-        q = s.query(ContentRestriction).filter(
-            ContentRestriction.chat_id == str(chat_id)
-        )
-        if user_id is not None:
-            q = q.filter(ContentRestriction.user_id == user_id)
-        else:
-            q = q.filter(ContentRestriction.user_id.is_(None))
-        return [r.content_type for r in q.all()]
-    finally:
-        s.close()
-
-
-def _add_restriction(chat_id: int, content_type: str, user_id: int = None) -> bool:
-    """افزودن قفل محتوا. False اگر قبلا وجود داشته باشد."""
-    s = get_session()
-    try:
-        q = s.query(ContentRestriction).filter(
-            ContentRestriction.chat_id == str(chat_id),
-            ContentRestriction.content_type == content_type,
-        )
-        if user_id is not None:
-            q = q.filter(ContentRestriction.user_id == user_id)
-        else:
-            q = q.filter(ContentRestriction.user_id.is_(None))
-        if q.first():
-            return False
-        s.add(
-            ContentRestriction(
-                chat_id=str(chat_id), user_id=user_id, content_type=content_type
-            )
-        )
-        s.commit()
-        return True
-    finally:
-        s.close()
-
-
-def _remove_restriction(chat_id: int, content_type: str, user_id: int = None) -> bool:
-    """حذف قفل محتوا. False اگر وجود نداشته باشد."""
-    s = get_session()
-    try:
-        q = s.query(ContentRestriction).filter(
-            ContentRestriction.chat_id == str(chat_id),
-            ContentRestriction.content_type == content_type,
-        )
-        if user_id is not None:
-            q = q.filter(ContentRestriction.user_id == user_id)
-        else:
-            q = q.filter(ContentRestriction.user_id.is_(None))
-        count = q.delete()
-        s.commit()
-        return count > 0
-    finally:
-        s.close()
+from bot.helpers import build_user_mention, escape_html, extract_user_id, is_group
+from services.log_service import log_action
+from services.restrict_service import (
+    ALLOWED_CONTENT_TYPES,
+    add_restriction,
+    is_content_locked,
+    is_valid_content_type,
+    list_restrictions,
+    remove_restriction,
+)
+from services.stats_service import track_message
 
 
 def _delete_message(bot: telebot.TeleBot, message) -> None:
@@ -97,21 +29,6 @@ def _delete_message(bot: telebot.TeleBot, message) -> None:
         target_id=message.from_user.id,
         details=f"type={message.content_type}",
     )
-
-
-def _message_is_restricted(
-    chat_id: int, user_id: int, content_type: str
-) -> bool:
-    """بررسی می‌کند آیا این نوع محتوا قفل است یا نه."""
-    # قفل کاربر خاص — اگر هیچ محدودیتی برای او ثبت شده باشد
-    user_restrictions = _get_restrictions(chat_id, user_id=user_id)
-    if content_type in user_restrictions:
-        return True
-    # قفل کل گروه
-    group_restrictions = _get_restrictions(chat_id, user_id=None)
-    if content_type in group_restrictions:
-        return True
-    return False
 
 
 def restrict_handler(bot: telebot.TeleBot):
@@ -143,7 +60,7 @@ def restrict_handler(bot: telebot.TeleBot):
         action = parts[1].lower()
 
         if action == "list":
-            locked = _get_restrictions(message.chat.id)
+            locked = list_restrictions(message.chat.id)
             if not locked:
                 return bot.reply_to(message, "هیچ محتوایی قفل نشده است.")
             text = "محتواهای قفل‌شده در گروه:\n" + "\n".join(
@@ -158,14 +75,14 @@ def restrict_handler(bot: telebot.TeleBot):
         content_type = parts[2].strip().lower()
 
         if action == "add":
-            if content_type not in ALLOWED_CONTENT_TYPES:
+            if not is_valid_content_type(content_type):
                 return bot.reply_to(
                     message,
                     f"نوع نامعتبر: <code>{escape_html(content_type)}</code>\n"
                     "انواع مجاز: " + ", ".join(ALLOWED_CONTENT_TYPES.keys()),
                     parse_mode="HTML",
                 )
-            if not _add_restriction(message.chat.id, content_type):
+            if not add_restriction(message.chat.id, content_type):
                 return bot.reply_to(message, "این نوع محتوا قبلا قفل شده است.")
             log_action(
                 action="restrict_content_add",
@@ -180,7 +97,7 @@ def restrict_handler(bot: telebot.TeleBot):
             )
 
         if action == "remove":
-            if not _remove_restriction(message.chat.id, content_type):
+            if not remove_restriction(message.chat.id, content_type):
                 return bot.reply_to(message, "این نوع محتوا قفل نبوده است.")
             log_action(
                 action="restrict_content_remove",
@@ -227,7 +144,7 @@ def restrict_handler(bot: telebot.TeleBot):
             target_id, err_id = extract_user_id(message)
             if err_id:
                 return bot.reply_to(message, "کاربر را ریپلای کنید یا ID وارد کنید.")
-            locked = _get_restrictions(message.chat.id, user_id=target_id)
+            locked = list_restrictions(message.chat.id, user_id=target_id)
             if not locked:
                 return bot.reply_to(
                     message,
@@ -245,7 +162,7 @@ def restrict_handler(bot: telebot.TeleBot):
 
         content_type = parts[2].strip().lower()
 
-        if content_type not in ALLOWED_CONTENT_TYPES:
+        if not is_valid_content_type(content_type):
             return bot.reply_to(
                 message,
                 f"نوع نامعتبر: <code>{escape_html(content_type)}</code>\n"
@@ -274,7 +191,7 @@ def restrict_handler(bot: telebot.TeleBot):
             user_name = f"<code>{target_id}</code>"
 
         if action == "add":
-            if not _add_restriction(message.chat.id, content_type, user_id=target_id):
+            if not add_restriction(message.chat.id, content_type, user_id=target_id):
                 return bot.reply_to(
                     message,
                     f"این نوع محتوا قبلا برای کاربر {user_name} قفل شده است.",
@@ -294,7 +211,7 @@ def restrict_handler(bot: telebot.TeleBot):
             )
 
         if action == "remove":
-            if not _remove_restriction(message.chat.id, content_type, user_id=target_id):
+            if not remove_restriction(message.chat.id, content_type, user_id=target_id):
                 return bot.reply_to(
                     message,
                     f"این نوع محتوا قفل نبوده است.",
@@ -322,8 +239,8 @@ def restrict_handler(bot: telebot.TeleBot):
         if not is_group(message):
             return
 
-        locked = _get_restrictions(message.chat.id, user_id=message.from_user.id)
-        group_locked = _get_restrictions(message.chat.id, user_id=None)
+        locked = list_restrictions(message.chat.id, user_id=message.from_user.id)
+        group_locked = list_restrictions(message.chat.id)
 
         if not locked and not group_locked:
             return bot.reply_to(message, "هیچ محتوایی برای شما قفل نشده است.")
@@ -343,12 +260,8 @@ def restrict_handler(bot: telebot.TeleBot):
     # ──────────────────────────────────────────────
     #  اجرای خودکار قفل محتوا روی پیام‌ها
     # ──────────────────────────────────────────────
-    # ما هندلر جداگانه‌ای ثبت نمی‌کنیم چون filter.py یک catch-all
-    # handler ثبت می‌کند. به‌جای آن، logic اجرا در هندلر scan_message
-    # filter.py ادغام می‌شود (فیلتر اعمال می‌شود قبل از آن هندلر).
-    #
-    # اما برای سادگی و عدم نیاز به تغییر filter.py، یک هندلر
-    # content-type-specific ثبت می‌کنیم که قبل از catch-all اجرا شود.
+    # یک هندلر مخصوص نوع محتوا ثبت می‌کنیم (نه catch-all) تا پیش از
+    # هندلر catch-all ماژول filter اجرا شود.
     _LOCKED_TYPES = [
         "photo", "video", "sticker", "animation", "voice",
         "video_note", "document", "audio",
@@ -365,7 +278,7 @@ def restrict_handler(bot: telebot.TeleBot):
         user_id = message.from_user.id
         ctype = message.content_type
 
-        if _message_is_restricted(message.chat.id, user_id, ctype):
+        if is_content_locked(message.chat.id, user_id, ctype):
             _delete_message(bot, message)
             try:
                 type_label = ALLOWED_CONTENT_TYPES.get(ctype, ctype)

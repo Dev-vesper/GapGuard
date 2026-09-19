@@ -1,56 +1,21 @@
-import re
-from typing import List
+"""فیلتر پیام‌ها: کلمات ممنوعه، لینک و فوروارد."""
 
 import telebot
 from telebot.apihelper import ApiTelegramException
 
-from bot.helpers import is_group
 from bot.guards import command_guard
-from groups.logs import log_action
-from groups.settings import get_chat_setting
-from groups.stats import track_message
-from core.database import get_session
-from database.models import BannedWord
-
-
-LINK_PATTERN = re.compile(r"https?://|t\.me/|telegram\.me/")
-
-
-def _get_banned_words(chat_id: int) -> List[str]:
-    s = get_session()
-    try:
-        rows = s.query(BannedWord).filter(BannedWord.chat_id == str(chat_id)).all()
-        return [r.word for r in rows]
-    finally:
-        s.close()
-
-
-def _add_banned_word(chat_id: int, word: str) -> bool:
-    s = get_session()
-    try:
-        exists = (
-            s.query(BannedWord)
-            .filter(BannedWord.chat_id == str(chat_id), BannedWord.word == word)
-            .first()
-        )
-        if exists:
-            return False
-        s.add(BannedWord(chat_id=str(chat_id), word=word))
-        s.commit()
-        return True
-    finally:
-        s.close()
-
-
-def _remove_banned_word(chat_id: int, word: str):
-    s = get_session()
-    try:
-        s.query(BannedWord).filter(
-            BannedWord.chat_id == str(chat_id), BannedWord.word == word
-        ).delete()
-        s.commit()
-    finally:
-        s.close()
+from bot.helpers import is_group
+from services.filter_service import (
+    add_banned_word,
+    contains_link,
+    find_banned_word,
+    is_forwarded,
+    list_banned_words,
+    remove_banned_word,
+)
+from services.log_service import log_action
+from services.settings_service import get_chat_settings
+from services.stats_service import track_message
 
 
 def _auto_delete(bot: telebot.TeleBot, message, reason: str) -> None:
@@ -81,7 +46,7 @@ def filter_handler(bot: telebot.TeleBot):
         action = parts[1].lower()
 
         if action == "list":
-            words = _get_banned_words(message.chat.id)
+            words = list_banned_words(message.chat.id)
             if not words:
                 return bot.reply_to(message, "هیچ کلمه‌ای فیلتر نشده.")
             return bot.reply_to(message, "فیلتر شده‌ها:\n" + "\n".join(words))
@@ -92,12 +57,12 @@ def filter_handler(bot: telebot.TeleBot):
         word = parts[2].strip().lower()
 
         if action == "add":
-            if not _add_banned_word(message.chat.id, word):
+            if not add_banned_word(message.chat.id, word):
                 return bot.reply_to(message, "این کلمه قبلا اضافه شده.")
             return bot.reply_to(message, "کلمه اضافه شد.")
 
         if action == "remove":
-            _remove_banned_word(message.chat.id, word)
+            remove_banned_word(message.chat.id, word)
             return bot.reply_to(message, "کلمه حذف شد.")
 
         return bot.reply_to(message, "پارامتر نامعتبر: add|remove|list")
@@ -115,20 +80,17 @@ def filter_handler(bot: telebot.TeleBot):
         if not text or text.startswith("/"):
             return
 
-        setting = get_chat_setting(message.chat.id)
-        auto_remove = True if not setting else setting.auto_remove_banned
-        anti_link = False if not setting else setting.anti_link
-        anti_forward = False if not setting else setting.anti_forward
+        settings = get_chat_settings(message.chat.id)
 
-        for w in _get_banned_words(message.chat.id):
-            if w and re.search(r"\b" + re.escape(w) + r"\b", text):
-                if auto_remove:
-                    _auto_delete(bot, message, f"word:{w}")
-                return
+        word = find_banned_word(text, list_banned_words(message.chat.id))
+        if word:
+            if settings.auto_remove_banned:
+                _auto_delete(bot, message, f"word:{word}")
+            return
 
-        if anti_link and LINK_PATTERN.search(text):
+        if settings.anti_link and contains_link(text):
             _auto_delete(bot, message, "anti_link")
             return
 
-        if anti_forward and getattr(message, "forward_from", None) is not None:
+        if settings.anti_forward and is_forwarded(message):
             _auto_delete(bot, message, "anti_forward")

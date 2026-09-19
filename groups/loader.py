@@ -18,12 +18,7 @@ import telebot
 PRIORITY_MAP = {
     "settings": 0,     # تنظیمات باید زودتر باشد چابق تنظیم گروه
     "logs": 10,
-    "ban": 20,
-    "unban": 21,
-    "kick": 22,
-    "mute": 23,
-    "unmute": 24,
-    "warn": 30,
+    "moderation": 20,  # ban/unban/kick/mute/unmute/warn/unwarn/warns
     "roles": 40,
     "messages": 50,
     "restrict": 60,
