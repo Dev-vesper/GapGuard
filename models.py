@@ -9,7 +9,7 @@ from sqlalchemy import (
     ForeignKey,
 )
 from sqlalchemy.orm import relationship
-from db import Base
+from core.database import Base
 
 
 class ChatSetting(Base):

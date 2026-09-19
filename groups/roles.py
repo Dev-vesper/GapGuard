@@ -4,7 +4,7 @@ from telebot.apihelper import ApiTelegramException
 from utils.helpers import extract_user_id
 from utils.guards import command_guard
 from groups.logs import log_action
-from db import get_session
+from core.database import get_session
 from models import SpecialMember, Tag
 
 

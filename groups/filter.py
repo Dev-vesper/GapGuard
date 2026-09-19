@@ -9,7 +9,7 @@ from utils.guards import command_guard
 from groups.logs import log_action
 from groups.settings import get_chat_setting
 from groups.stats import track_message
-from db import get_session
+from core.database import get_session
 from models import BannedWord
 
 

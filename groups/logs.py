@@ -2,7 +2,7 @@ import telebot
 from sqlalchemy import desc
 
 from utils.guards import command_guard
-from db import get_session
+from core.database import get_session
 from models import Log
 
 

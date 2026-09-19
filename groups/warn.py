@@ -10,7 +10,7 @@ from utils.helpers import (
 )
 from utils.guards import command_guard
 
-from db import get_session
+from core.database import get_session
 from models import Warn
 from groups.logs import log_action
 from groups.settings import get_chat_setting
