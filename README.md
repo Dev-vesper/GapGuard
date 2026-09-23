@@ -29,7 +29,7 @@ project dependencies isolated from your global Python installation and makes the
 ### Linux / macOS
 
 ```bash
-git clone <your-repo-url>
+git clone https://github.com/Dev-vesper/GapGuard.git
 cd GapGuard
 
 python3 -m venv .venv
@@ -48,7 +48,7 @@ python main.py
 PowerShell:
 
 ```powershell
-git clone <your-repo-url>
+git clone https://github.com/Dev-vesper/GapGuard.git
 cd GapGuard
 
 py -m venv .venv
@@ -65,7 +65,7 @@ python main.py
 Command Prompt (`cmd.exe`) — same steps, only the activation line differs:
 
 ```bat
-git clone <your-repo-url>
+git clone https://github.com/Dev-vesper/GapGuard.git
 cd GapGuard
 
 py -m venv .venv
